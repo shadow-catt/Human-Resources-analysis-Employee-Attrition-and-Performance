@@ -1,0 +1,165 @@
+```{r message = FALSE, warning = FALSE}
+df<- read.csv("F:/Y3term2/IBDA/archive/data.csv",header=TRUE)
+df<-df[,2:length(df)]
+library(ggplot2)
+library(qpcR)
+library(robustbase)
+library(car)
+library(olsrr)
+library(reshape2)
+```
+
+```{r}
+head(df)
+```
+
+```{r}
+df_0<-df
+dim(df_0)
+```
+
+```{r}
+# correlation matrix
+cormat <- cor(df)
+melted_cort <- melt(cormat)
+ggplot(data=melted_cort,aes(x=Var2,y=Var1,fill=value))+geom_tile()+theme(axis.text.x=element_text(angle=90,vjust=1,size=10,hjust=1))+
+geom_text(aes(Var2, Var1, label=round(value,2)),color="black",size=1)+
+scale_fill_gradient2(low="darkgreen",high="darkblue",midpoint=0, limit=c(-1,1),space="Lab",name="Pearson\nCorrelation")
+```
+
+```{r}
+model<-step(lm(MonthlyIncome~.,data=df))
+```
+
+```{r}
+# model performance
+model<-lm(MonthlyIncome~Age + BusinessTravel + Department + DistanceFromHome + 
+    JobLevel + JobRole + TotalWorkingYears + YearsSinceLastPromotion + 
+    YearsWithCurrManager,data=df)
+summary(model)
+```
+
+```{r}
+# model perfomance
+model<-step(lm(MonthlyIncome~Age + Department + DistanceFromHome + 
+    JobLevel + JobRole + TotalWorkingYears + 
+    YearsWithCurrManager,data=df))
+summary(model)
+```
+
+```{r}
+# test multicollinearity 
+vif(model,digits=0)
+```
+
+```{r}
+# do x truly affect y?
+res <- manova(cbind(Age,Department,DistanceFromHome, 
+    JobLevel,JobRole,TotalWorkingYears, 
+    YearsWithCurrManager)~MonthlyIncome, data=df)
+summary(res)
+```
+
+```{r Eval=FALSE}
+# check y transformation
+trans <- boxcox(YearsAtCompany+0.001~Age + Department + DistanceFromHome + 
+    JobLevel + JobRole + TotalWorkingYears + 
+    YearsWithCurrManager,data=df)
+lambda<-trans$x
+lik<-trans$y
+bc<-cbind(lambda,lik)
+bc[order(-lik),][1,1]
+```
+
+```{r Eval=FALSE}
+# check x transformation
+powerTransform(df['Age']+0.001)
+powerTransform(df['Department']+0.001)
+powerTransform(df['DistanceFromHome']+0.001)
+powerTransform(df['JobLevel']+0.001)
+powerTransform(df['JobRole']+0.001)
+powerTransform(df['TotalWorkingYears']+0.001)
+powerTransform(df['YearsWithCurrManager']+0.001)
+```
+
+```{r}
+# model diagnosis
+par(mfrow=c(2,2))
+plot(model)
+```
+```{r}
+# delete outliers
+threshold=1
+turns=100
+  model<-lm(MonthlyIncome~Age + Department + DistanceFromHome + 
+    JobLevel + JobRole + TotalWorkingYears + 
+    YearsWithCurrManager,data=df)
+  if(sum(is.na(outlier))>=1){
+    break
+  }
+  todelete <- rownames(data.frame(list(outlier[1])))
+  turn_i = 0
+  while(length(todelete)>0){
+    if(turn_i>=turns){
+      break
+    }
+    for(i in todelete){
+      idex=which(row.names(df)==i)
+      df=df[-idex,]
+    }
+    if(dim(df)[1]<=threshold){
+      break
+    }
+    turn_i = turn_i+1
+    model<-lm(MonthlyIncome~Age + Department + DistanceFromHome + 
+    JobLevel + JobRole + TotalWorkingYears + 
+    YearsWithCurrManager,data=df)
+    outlier <- outlierTest(model)
+    todelete <- rownames(data.frame(list(outlier[1])))
+  }
+print("delete successfully!")
+```
+```{r}
+dim(df)
+```
+
+```{r}
+# model diagnosis
+par(mfrow=c(2,2))
+plot(model)
+```
+```{r}
+summary(model)
+```
+```{r}
+library(dplyr)
+df_1 = anti_join(df_0,df)
+write.csv(df_1,"F:/Y3term2/IBDA/deleteIncome.csv")
+```
+
+```{r}
+# model perfomance
+model<-step(lm(MonthlyIncome~.,data=df_1))
+summary(model)
+```
+
+```{r}
+model <- lm(formula = MonthlyIncome ~ Age + Department + JobLevel + JobSatisfaction + 
+    TotalWorkingYears, data = df_1)
+summary(model)
+```
+```{r}
+# test multicollinearity 
+vif(model,digits=0)
+```
+
+```{r}
+# do x truly affect y?
+res <- manova(cbind(Age,Department,JobLevel,JobSatisfaction, 
+    TotalWorkingYears)~MonthlyIncome, data=df)
+summary(res)
+```
+
+
+
+

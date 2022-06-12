@@ -1,0 +1,215 @@
+---
+title: "IBDA_Chebyshev_logic"
+author: "Justin"
+date: "2022/5/8"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(corrplot)
+```
+
+# Data Overview
+
+The data has been processed when conducting the decision tree, which change all the qualitative data to the integer and remove the data without ranking. Besides, we also remove the data which is meaningless, for example id and constant data.
+
+```{r}
+data <- read.csv("HR_data.csv")
+data <- data[,-1]
+data <- subset(data,select = -c(Attrition))
+data
+```
+
+# Select the integer column
+
+```{r}
+colnames <- colnames(data)
+colnames
+```
+
+# Chebyshev
+
+Testing for the Chebyshev
+
+```{r}
+# testing for signle 
+colname <- 'Age'
+vector <- data[[colname]]
+mean_size <- mean(vector)
+sd_size <- sd(vector)
+in_2nd <- vector[vector<(mean_size+2*sd_size) & vector>(mean_size-2*sd_size)]
+in_3rd <- vector[vector<(mean_size+3*sd_size) & vector>(mean_size-3*sd_size)]
+rate_2nd <- length(in_2nd)/length(vector)
+rate_3rd <- length(in_3rd)/length(vector)
+rate_2nd
+rate_3rd
+if_reach_2nd <- (rate_2nd>0.75)
+if_reach_3rd <- (rate_3rd>0.89)
+if_reach_2nd
+if_reach_3rd
+```
+
+For everything
+
+```{r}
+if_2nd_list <- numeric(length(colnames))
+if_3rd_list <- numeric(length(colnames))
+two_rd_list <- numeric(length(colnames))
+three_rd_list <- numeric(length(colnames))
+for(col_ind in c(1:length(colnames))){
+    colname <- colnames[col_ind]
+    vector <- data[[colname]]
+    mean_size <- mean(vector)
+    sd_size <- sd(vector)
+    in_2nd <- vector[vector<(mean_size+2*sd_size) & vector>(mean_size-2*sd_size)]
+    in_3rd <- vector[vector<(mean_size+3*sd_size) & vector>(mean_size-3*sd_size)]
+    rate_2nd <- length(in_2nd)/length(vector)
+    rate_3rd <- length(in_3rd)/length(vector)
+    rate_2nd
+    rate_3rd
+    if_reach_2nd <- (rate_2nd>0.75)
+    if_reach_3rd <- (rate_3rd>0.89)
+    if_2nd_list[col_ind] <- if_reach_2nd 
+    if_3rd_list[col_ind] <- if_reach_3rd
+    two_rd_list[col_ind] <- rate_2nd
+    three_rd_list[col_ind] <- rate_3rd
+}
+#if_2nd_list
+#if_3rd_list
+df <- data.frame(rate_2nd=two_rd_list,if_2nd_list=if_2nd_list,rate_3rd=three_rd_list,if_3rd_list=if_3rd_list)
+rownames(df) <- colnames
+df
+```
+
+# Logistic regression
+
+## Step select
+
+```{r}
+# change the position of column
+data <- data %>% select(OverTime, Age,everything())
+data
+```
+
+```{r}
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+
+M = cor(data, method = "spearman")
+
+corrplot(M, 
+         method = "shade", 
+         type = {"lower"}, 
+         shade.col = NA, 
+         tl.col = "black", 
+         tl.srt = 45,
+         tl.cex = 0.6,
+         col = col(200),
+         cl.pos = NULL)
+```
+
+For everything
+
+```{r}
+fit_glm <- glm(OverTime~., data = data, family = "binomial")
+summary(fit_glm)
+```
+
+```{r}
+fit_step_glm <- step(glm(OverTime~., data = data, family = "binomial"))
+summary(fit_glm)
+```
+
+| SColname                 | Deviance | AIC    |
+|--------------------------|----------|--------|
+| \<none\>                 | 1718.0   | 1736.0 |
+| JobRole                  | 1720.7   | 1736.7 |
+| Gender                   | 1721.2   | 1737.2 |
+| NumCompaniesWorked       | 1721.5   | 1737.5 |
+| RelationshipSatisfaction | 1721.7   | 1737.7 |
+| Age                      | 1721.7   | 1737.7 |
+| YearsWithCurrManager     | 1722.7   | 1738.7 |
+| EnvironmentSatisfaction  | 1725.2   | 1741.2 |
+| TrainingTimesLastYear    | 1728.2   | 1744.2 |
+
+## Select Manually
+
+```{r}
+# select the coloumns which is obtain from the step
+data_sign<- subset(data, select=c(OverTime,Age,YearsWithCurrManager,TrainingTimesLastYear,EnvironmentSatisfaction,RelationshipSatisfaction,NumCompaniesWorked,Gender,JobRole))
+
+data_sign_rank <- data_sign %>% select(OverTime, everything())
+```
+
+```{r}
+fit_glm <- glm(OverTime ~ ., data = data_sign_rank, family = "binomial")
+summary(fit_glm)
+```
+
+```{r}
+fit_glm_b <- glm(OverTime ~ Age+YearsWithCurrManager+TrainingTimesLastYear+EnvironmentSatisfaction+RelationshipSatisfaction+NumCompaniesWorked+Gender, data = data, family = "binomial")
+summary(fit_glm_b)
+```
+
+```{r}
+fit_glm_b <- glm(OverTime ~ Age+YearsWithCurrManager+TrainingTimesLastYear+EnvironmentSatisfaction+NumCompaniesWorked, data = data, family = "binomial")
+summary(fit_glm_b)
+```
+
+```{r}
+fit_glm_b <- glm(OverTime ~ YearsWithCurrManager+TrainingTimesLastYear+EnvironmentSatisfaction+NumCompaniesWorked, data = data, family = "binomial")
+summary(fit_glm_b)
+```
+
+```{r}
+fit_glm_b <- glm(OverTime ~ TrainingTimesLastYear+EnvironmentSatisfaction, data = data, family = "binomial")
+summary(fit_glm_b)
+```
+
+```{r}
+# split the training set and testing set
+index <-  sort(sample(nrow(data_sign_rank), nrow(data_sign_rank)*.9))
+train <- data_sign_rank[index,]
+test <-  data_sign_rank[-index,]
+dim(train)
+dim(test)
+```
+
+```{r}
+fit_glm_b <- glm(OverTime ~ EnvironmentSatisfaction + TrainingTimesLastYear, data = train, family = "binomial")
+summary(fit_glm_b)
+```
+
+```{r}
+trn_pred <- ifelse(predict(fit_glm_b, newdata=test,type="response") > 0.5, 1, 0)
+trn_tab <- table(predicted = trn_pred, actual = test$OverTime)
+#trn_tab
+print("The accuarcy is:")
+sum(diag(trn_tab))/sum(trn_tab)
+```
+
+```{r}
+anova(object=fit_glm_b,test = "Chisq")
+```
+
+```{r}
+library(car)
+data.frame(vif(fit_glm_b,digits=0))
+```
+
+```{r}
+library(pROC)
+prob <- predict(fit_glm, newdata=test,type="response") + 0.1
+roc_curve <- roc(test$OverTime,prob)
+#names(roc_curve)
+x <- 1-roc_curve$specificities
+y <- roc_curve$sensitivities
+
+library(ggplot2)
+p <- ggplot(data = NULL, mapping = aes(x= x, y = y))+
+    geom_line(colour = 'red') + 
+    geom_abline(intercept = 0, slope = 1)+
+    annotate('text', x = 0.4, y = 0.5, label = paste('AUC=',round(roc_curve$auc,2)))+
+    labs(x = 'Specificities',y = 'Sensitivities', title = 'ROC Curve')
+p
+```
